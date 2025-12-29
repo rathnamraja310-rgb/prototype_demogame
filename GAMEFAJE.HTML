@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Dot Shooter Game</title>
+<style>
+    body {
+        margin: 0;
+        background: #111;
+        color: white;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+        touch-action: none;
+    }
+
+    #game {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+    }
+
+    .player {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background: yellow;
+        border-radius: 50%;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 5;
+    }
+
+    .dot {
+        position: absolute;
+        border-radius: 50%;
+    }
+
+    .small { width: 12px; height: 12px; background: red; }
+    .large { width: 24px; height: 24px; background: red; }
+
+    /* +5 BULLET POWER */
+    .power5 {
+        width: 16px;
+        height: 16px;
+        background: yellow;
+        border-radius: 50%;
+        box-shadow: 0 0 10px yellow;
+    }
+
+    .bullet {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: white;
+        border-radius: 50%;
+    }
+
+    #ui {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        font-size: 16px;
+        z-index: 10;
+    }
+</style>
+</head>
+<body>
+
+<div id="game">
+    <div class="player" id="player"></div>
+    <div id="ui">
+        Time: <span id="time">30</span> |
+        Bullets: <span id="bullets">5</span> |
+        Score: <span id="score">0</span>
+    </div>
+</div>
+
+<script>
+const game = document.getElementById("game");
+const player = document.getElementById("player");
+
+let time = 30;
+let bullets = 5;
+let score = 0;
+
+// EASY MODE
+const DOT_SPEED = 1;
+const BULLET_SPEED = 4;
+const SPAWN_RATE = 1500;
+
+// timer
+setInterval(() => {
+    if (time > 0) {
+        time--;
+        timeEl.textContent = time;
+    }
+}, 1000);
+
+const timeEl = document.getElementById("time");
+const bulletEl = document.getElementById("bullets");
+const scoreEl = document.getElementById("score");
+
+// spawn dots and power
+setInterval(() => {
+    if (time <= 0) return;
+
+    const dot = document.createElement("div");
+    const isPower5 = Math.random() < 0.15;
+
+    if (isPower5) {
+        dot.className = "dot power5";
+        dot.dataset.type = "power5";
+    } else {
+        const isSmall = Math.random() > 0.5;
+        dot.className = "dot " + (isSmall ? "small" : "large");
+        dot.dataset.type = "score";
+        dot.dataset.points = isSmall ? 10 : 20;
+    }
+
+    if (Math.random() > 0.5) {
+        dot.style.top = "0px";
+        dot.style.left = Math.random() * innerWidth + "px";
+        dot.dataset.dx = 0;
+        dot.dataset.dy = 1;
+    } else {
+        dot.style.left = "0px";
+        dot.style.top = Math.random() * innerHeight + "px";
+        dot.dataset.dx = 1;
+        dot.dataset.dy = 0;
+    }
+
+    game.appendChild(dot);
+
+    const move = setInterval(() => {
+        if (time <= 0) {
+            clearInterval(move);
+            dot.remove();
+            return;
+        }
+
+        dot.style.left = dot.offsetLeft + dot.dataset.dx * DOT_SPEED + "px";
+        dot.style.top = dot.offsetTop + dot.dataset.dy * DOT_SPEED + "px";
+
+        if (dot.offsetLeft > innerWidth || dot.offsetTop > innerHeight) {
+            clearInterval(move);
+            dot.remove();
+        }
+    }, 16);
+}, SPAWN_RATE);
+
+// unified shoot function (mouse + touch)
+function shoot(x, y) {
+    if (bullets <= 0 || time <= 0) return;
+
+    bullets--;
+    bulletEl.textContent = bullets;
+
+    const bullet = document.createElement("div");
+    bullet.className = "bullet";
+
+    const pr = player.getBoundingClientRect();
+    let bx = pr.left + pr.width / 2;
+    let by = pr.top + pr.height / 2;
+
+    bullet.style.left = bx + "px";
+    bullet.style.top = by + "px";
+    game.appendChild(bullet);
+
+    const angle = Math.atan2(y - by, x - bx);
+
+    const moveBullet = setInterval(() => {
+        bx += Math.cos(angle) * BULLET_SPEED;
+        by += Math.sin(angle) * BULLET_SPEED;
+
+        bullet.style.left = bx + "px";
+        bullet.style.top = by + "px";
+
+        document.querySelectorAll(".dot").forEach(dot => {
+            const d = dot.getBoundingClientRect();
+            if (bx >= d.left && bx <= d.right && by >= d.top && by <= d.bottom) {
+                handleHit(dot);
+                bullet.remove();
+                clearInterval(moveBullet);
+            }
+        });
+
+        if (bx < 0 || bx > innerWidth || by < 0 || by > innerHeight) {
+            bullet.remove();
+            clearInterval(moveBullet);
+        }
+    }, 16);
+}
+
+// destroy enemy by direct touch (mobile friendly)
+game.addEventListener("touchstart", e => {
+    const t = e.touches[0];
+    document.querySelectorAll(".dot").forEach(dot => {
+        const d = dot.getBoundingClientRect();
+        if (
+            t.clientX >= d.left && t.clientX <= d.right &&
+            t.clientY >= d.top && t.clientY <= d.bottom
+        ) {
+            handleHit(dot);
+        }
+    });
+    shoot(t.clientX, t.clientY);
+});
+
+// mouse click
+game.addEventListener("click", e => shoot(e.clientX, e.clientY));
+
+// common hit logic
+function handleHit(dot) {
+    if (dot.dataset.type === "power5") {
+        bullets += 5;
+        bulletEl.textContent = bullets;
+    } else {
+        score += Number(dot.dataset.points);
+        scoreEl.textContent = score;
+    }
+    dot.remove();
+}
+</script>
+
+</body>
+</html>
